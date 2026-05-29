@@ -37,6 +37,19 @@ class DatabaseManager:
                 )
             """)
 
+    def add_decks(self, name):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO DECKS (name) VALUES (?)", (name,))
+            cur.execute("SELECT id FROM decks WHERE name = ?", (name,))
+            return cur.fetchone()
+        
+    def get_all_decks():
+        pass
+
+    def delete_decks():
+        pass
+
 class ScryfallAPI:
     pass
 
