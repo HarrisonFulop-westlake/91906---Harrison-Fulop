@@ -36,6 +36,7 @@ class DatabaseManager:
                     deck_id      INTEGER REFERENCES decks(id) ON DELETE SET NULL
                 )
             """)
+    #Decks
 
     def add_decks(self, name):
         with self.connect() as conn:
@@ -44,11 +45,54 @@ class DatabaseManager:
             cur.execute("SELECT id FROM decks WHERE name = ?", (name,))
             return cur.fetchone()
         
-    def get_all_decks():
+    def get_all_decks(self):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT id, name FROM decks ORDER BY name")
+            return cur.fetchall()
+
+    def delete_decks(self, deck_id: int):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM decks WHERE id = ?", (deck_id,))
+
+    #Cards
+    
+    def add_cards(self, card: dict, deck_id: int | None, quantity: int , notes: str):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                INSERT INTO cards 
+                    (scryfall_id, name, set_name, rarity, mana_cost, type_line image_uri, quantity, notes, deck_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,(
+                card.get("id"),
+                card.get("name"),
+                card.get("set_name"),
+                card.get("rarity"),
+                card.get("mana_cost",""),
+                card.get("type_line",""),
+                card.get("image_uris",{}).get("small",""),
+                quantity,
+                notes,
+                deck_id,
+
+        ))
+
+    def get_cards():
         pass
 
-    def delete_decks():
-        pass
+    def delete_cards(self, card_id: int):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM cards WHERE id = ?", (card_id))
+
+    def update_cards(self, card_id: int, quantity: int):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE cards SET quantity = ? WHERE id = ?", (quantity, card_id))
+        
+
 
 class ScryfallAPI:
     pass
