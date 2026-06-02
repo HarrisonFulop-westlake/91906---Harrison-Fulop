@@ -79,9 +79,26 @@ class DatabaseManager:
 
         ))
 
-    def get_cards():
-        pass
+    def get_cards(self, deck_id: int |None = None):
+        with self.connect() as conn:
+            cur = conn.cursor()
+            base = """
+                SELECT c.id, c.name, c.set_name, c.rarity, c.mana_cost, c.type_line, c.quantity, c.notes,
 
+                COALESCE(d.name, 'No Deck')
+                
+                FROM cards c
+                LEFT JOIN decks d ON c.deck_id = d.id
+            """
+            conditions, params = [], []
+            if deck_id is not None:
+                conditions.append("c.deck_id = ?")
+                params.append(deck_id)
+            #Seaching capabilities will go here when I figure it out
+            base += "ORDER BY c.name"
+            cur.execute(base, params)
+            return cur.fetchall()
+        
     def delete_cards(self, card_id: int):
         with self.connect() as conn:
             cur = conn.cursor()
