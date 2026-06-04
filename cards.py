@@ -112,7 +112,14 @@ class DatabaseManager:
 
 
 class ScryfallAPI:
-    pass
+    @staticmethod
+    def search(query: str, callback, error_callback):
+        def fetch():
+            try:
+                response = requests.get(
+                    SCRYFALL_SEARCH_URL,
+                    params={"q": query, "unique" : "cards"}
+                )
 
 class SearchFrame:
     pass
