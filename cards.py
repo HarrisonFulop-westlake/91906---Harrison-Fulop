@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
+import requests
+import threading
 
 DB_FILE = "cards.db"
 
@@ -85,7 +87,7 @@ class DatabaseManager:
             base = """
                 SELECT c.id, c.name, c.set_name, c.rarity, c.mana_cost, c.type_line, c.quantity, c.notes,
 
-                COALESCE(d.name, 'No Deck')
+                COALESCE(d.name, 'No Deck') 
                 
                 FROM cards c
                 LEFT JOIN decks d ON c.deck_id = d.id
@@ -118,8 +120,40 @@ class ScryfallAPI:
             try:
                 response = requests.get(
                     SCRYFALL_SEARCH_URL,
-                    params={"q": query, "unique" : "cards"}
+                    params={"q": query, "unique" : "cards", "order" : "name"},
                 )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    callback(data.get("data", []))
+
+                elif response.status_code == 404:
+                    callback([])
+
+                else:
+                    error_callback(f"Scryfall Error {response.status_code}")
+            except requests.RequestException as exception:
+                error_callback(str(exception))
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    @staticmethod
+    def exact_search(name: str, callback, error_callback):
+        def fetch():
+            try:
+                response = requests.get(
+                    SCRYFALL_NAMED_URL,
+                    params={"exact": name}
+                )
+                if response.status_code == 200:
+                    callback(response.json())
+
+                else:
+                    error_callback(f"Card not found: {name}")
+            except requests.RequestException as exception:
+                error_callback(str(exception))
+                
+        threading.Thread(target=fetch, daemon=True).start()
 
 class SearchFrame:
     pass
