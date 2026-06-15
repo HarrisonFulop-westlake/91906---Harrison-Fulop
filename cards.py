@@ -119,7 +119,7 @@ class ScryfallAPI:
         def fetch():
             try:
                 response = requests.get(
-                    SCRYFALL_SEARCH_URL,
+                    "https://api.scryfall.com/cards/search",
                     params={"q": query, "unique" : "cards", "order" : "name"},
                 )
 
@@ -142,7 +142,7 @@ class ScryfallAPI:
         def fetch():
             try:
                 response = requests.get(
-                    SCRYFALL_NAMED_URL,
+                    "https://api.scryfall.com/cards/named",
                     params={"exact": name}
                 )
                 if response.status_code == 200:
