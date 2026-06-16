@@ -156,7 +156,51 @@ class ScryfallAPI:
         threading.Thread(target=fetch, daemon=True).start()
 
 class SearchFrame:
-    pass
+    def __init__(self, parent, on_card_selected, **kwargs):
+        self.on_card_selected = on_card_selected
+        self.api = ScryfallAPI()
+        self.results: list[dict] = []
+        self.search_job = None
+    
+    def build_ui(self):
+        search_row = ttk.Frame(self)
+        search_row.pack(fill = "x", padx=6, pady=(6, 2))
+
+        self.search = tk.StringVar()
+        self.search_entry = ttk.Entry(search_row, textvariable=self.search)
+        self.search_entry.bind("<KeyRelease>", self.on_keyrelease)
+        self.search_entry.bind("<Return>", lambda _: self.do_search())
+
+        ttk.Button(search_row, text="Search", command=self.do_search)
+
+        self.status = tk.StringVar(value="Type a card name...")
+        ttk.Label(self, textvariable=self.status, foreground="grey").pack()
+
+        list_frame = ttk.Frame(self)
+        list_frame.pack
+
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
+        self.listbox = tk.Listbox(
+            list_frame, yscrollcommand=scrollbar.set, 
+            selectmode="browse",
+            height=12,
+        )
+        scrollbar.config(command=self.listbox.yview)
+        
+    def on_keyrealse(self):
+        if self.search_job:
+            self.after_cancel(self.search_job)
+        self.search_job = self.after(600, self.do_search)
+
+    def do_search(self):
+        query = self.search.get().strip()
+        if not query:
+            return
+        self.status.set("Searching")
+        self.listbox.delete(0, tk.END)
+        self.results = []
+        
+    
 
 class PreviewFrame:
     pass
