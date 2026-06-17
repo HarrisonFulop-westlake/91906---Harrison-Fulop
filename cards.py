@@ -187,9 +187,9 @@ class SearchFrame:
         )
         scrollbar.config(command=self.listbox.yview)
         
-    def on_keyrealse(self):
+    def on_keyrelease(self):
         if self.search_job:
-            self.after_cancel(self.search_job)
+            self.after_cancel(self.search_job) #dont forget to add this
         self.search_job = self.after(600, self.do_search)
 
     def do_search(self):
@@ -200,11 +200,50 @@ class SearchFrame:
         self.listbox.delete(0, tk.END)
         self.results = []
         
+    def on_results(self, cards: list[dict]):
+        self.results = cards
+        self.listbox.delete(0, tk.END)
+        if not cards:
+            self.status.set("No results found.)")
+            return
+        self.status.set(f"{len(cards)} result(s) select one to preview.")
+        for c in cards:
+            label = f"{c['name']} [{c.get('set_name','?')}] {c.get('rarity', '')}"
+            self.listbox.insert(tk.END, label)
     
+    def on_error(self, msg: str):
+        self.status.set(f"Error: {msg}")
 
+    def on_select(self):
+        select = self.listbox.curselection()
+        if not select:
+            return
+        card = self.results[select[0]]
+        self.on_card_selected(card)
+
+    
 class PreviewFrame:
-    pass
-
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, text="Card Preview", **kwargs)
+        self.build_ui()
+    
+    def build_ui(self):
+        self.name = tk.StringVar()
+        self.set = tk.StringVar()
+        self.rarity = tk.StringVar()
+        self.mana = tk.StringVar()
+        self.type = tk.StringVar()
+        
+        fields = [
+            ("Name", self.name),
+            ("Set", self.set),
+            ("Rarity", self.rarity),
+            ("Mana Cost", self.mana),
+            ("Type", self.type)
+        ]
+        for cards, (label, var) in enumerate(fields):
+            ttk.Label(self, text=f"{label}:").grid(row=cards, column=0, sticky="w")
+            ttk.Label(self, textvariable=)
 class AddToDeckFrame:
     pass
 
