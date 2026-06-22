@@ -243,7 +243,19 @@ class PreviewFrame:
         ]
         for cards, (label, var) in enumerate(fields):
             ttk.Label(self, text=f"{label}:").grid(row=cards, column=0, sticky="w")
-            ttk.Label(self, textvariable=)
+            ttk.Label(self, textvariable=var).grid(row=cards, column=1, sticky="w")
+
+    def load(self, card: dict):
+        self.name.set(card.get("name", ""))
+        self.set.set(card.get("set_name", ""))
+        self.rarity.set(card.get("rarity", ""))
+        self.mana.set(card.get("mana_cost", ""))
+        self.type.set(card.get("type_line", ""))
+
+    def clear(self):
+        for var in (self.name, self.set, self.rarity, self.mana, self.type):
+            var.set("")
+
 class AddToDeckFrame:
     pass
 
