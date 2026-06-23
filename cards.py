@@ -241,9 +241,9 @@ class PreviewFrame:
             ("Mana Cost", self.mana),
             ("Type", self.type)
         ]
-        for cards, (label, var) in enumerate(fields):
-            ttk.Label(self, text=f"{label}:").grid(row=cards, column=0, sticky="w")
-            ttk.Label(self, textvariable=var).grid(row=cards, column=1, sticky="w")
+        for num, (label, var) in enumerate(fields):
+            ttk.Label(self, text=f"{label}:").grid(row=num, column=0, sticky="w")
+            ttk.Label(self, textvariable=var).grid(row=num, column=1, sticky="w")
 
     def load(self, card: dict):
         self.name.set(card.get("name", ""))
@@ -257,8 +257,26 @@ class PreviewFrame:
             var.set("")
 
 class AddToDeckFrame:
-    pass
+    def __init__(self, parent, db: DatabaseManager, on_add, **kwargs):
+        super().__init__(parent, text="Add to Deck", **kwargs)
+        self.db = db
+        self.on_add = on_add
+        self.selected_card: dict| None = None
+        self.build_ui()
+        
+    def build_ui(self):
+        deck_row = ttk.Frame(self)
+        deck_row.pack(fill="x")
 
+        ttk.Label(deck_row, text="Deck:").pack(side="left")
+        self.deck = tk.StringVar()
+        self.deck_combo = ttk.Combobox(deck_row, textvariable = self.deck, state="readonly")
+        self.deck_combo.pack(side="left")
+
+        ttk.Button(deck_row, text="New Deck", command=self.new_deck).pack(side="left")
+        ttk.Button(deck_row, text="Delete Deck", command=self.delete_deck).pack(side="left")
+
+        ttk.Label
 class DeckViewrFrame:
     pass
 
