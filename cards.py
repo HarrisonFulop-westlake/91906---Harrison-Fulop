@@ -264,7 +264,7 @@ class AddToDeckFrame:
         self.selected_card: dict| None = None
         self.build_ui()
         
-    def build_ui(self):
+    def build_ui(self, opt_row):
         deck_row = ttk.Frame(self)
         deck_row.pack(fill="x")
 
@@ -276,7 +276,29 @@ class AddToDeckFrame:
         ttk.Button(deck_row, text="New Deck", command=self.new_deck).pack(side="left")
         ttk.Button(deck_row, text="Delete Deck", command=self.delete_deck).pack(side="left")
 
-        ttk.Label
+        ttk.Label(opt_row, text="Qty:").pack(side="left")
+        self.qty = tk.StringVar(value="1")
+        ttk.Spinbox(opt_row, from_=1, to=99, textvariable=self.qty).pack(side="left")
+
+        ttk.Label(opt_row, text="Notes:").pack(side="left")
+        self.notes = tk.StringVar()
+        ttk.Entry(opt_row, textvariable=self.notes).pack(side="left")
+
+        ttk.Button(self, text="Add Card to Deck", command=self.add).pack()
+        
+    def refresh_decks(self):
+        decks = self.db.get_all_decks()
+        self.deck_map = {name: did for did, name in decks}
+        names = list(self.deck_map.keys())
+        self.deck_combo["values"] = names
+        if self.deck.get() not in self.deck_map:
+            self.deck.set(names[0] if names else "")
+
+    def load_card(self, card: dict):
+        self.selected_card = card
+
+    def new_deck(self):
+        dialog = (self)
 class DeckViewrFrame:
     pass
 
