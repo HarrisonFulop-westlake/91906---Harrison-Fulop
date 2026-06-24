@@ -256,7 +256,7 @@ class PreviewFrame:
         for var in (self.name, self.set, self.rarity, self.mana, self.type):
             var.set("")
 
-class AddToDeckFrame:
+class AddToDeckFrame(ttk.LabelFrame):
     def __init__(self, parent, db: DatabaseManager, on_add, **kwargs):
         super().__init__(parent, text="Add to Deck", **kwargs)
         self.db = db
@@ -264,7 +264,7 @@ class AddToDeckFrame:
         self.selected_card: dict| None = None
         self.build_ui()
         
-    def build_ui(self, opt_row):
+    def build_ui(self):
         deck_row = ttk.Frame(self)
         deck_row.pack(fill="x")
 
@@ -276,6 +276,9 @@ class AddToDeckFrame:
         ttk.Button(deck_row, text="New Deck", command=self.new_deck).pack(side="left")
         ttk.Button(deck_row, text="Delete Deck", command=self.delete_deck).pack(side="left")
 
+        opt_row = ttk.Frame(self)
+        opt_row.pack(fill="x")
+
         ttk.Label(opt_row, text="Qty:").pack(side="left")
         self.qty = tk.StringVar(value="1")
         ttk.Spinbox(opt_row, from_=1, to=99, textvariable=self.qty).pack(side="left")
@@ -285,6 +288,8 @@ class AddToDeckFrame:
         ttk.Entry(opt_row, textvariable=self.notes).pack(side="left")
 
         ttk.Button(self, text="Add Card to Deck", command=self.add).pack()
+
+        self.refresh_decks()
         
     def refresh_decks(self):
         decks = self.db.get_all_decks()
@@ -298,7 +303,42 @@ class AddToDeckFrame:
         self.selected_card = card
 
     def new_deck(self):
-        dialog = (self)
+        dialog = InputDialog(self, title="New Deck", prompt="Deck name:")
+        name = dialog.result
+        if name and name.strip():
+            self.db.add_decks(name.strip())
+            self.refresh_decks()
+            self.deck.set(name.strip())
+
+    def delete_deck(self):
+        name = self.deck.get()
+        deck_id = self.deck_map.get(name)
+        if not name or deck_id is None:
+            messagebox.showwarning("No Selection", "Select a valid deck first")
+            return
+        if messagebox.askyesno("Delete Deck", f"Delete deck'{name}'?\ncards will not be deleted"):
+            self.db.delete_deck(deck_id)
+            self.refresh_decks()
+
+    def add(self):
+        if not self.selected_card:
+            messagebox.showwarning("No Card", "Search for and select a card first")
+            return
+        try:
+            qty = int(self.qty.get())
+            if qty < 1:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Invalid", "Quantity must be a positive integer.")
+            return
+        
+        deck_name = self.deck.get()
+        deck_id = self.deck_map.get(deck_name) if deck_name else None
+
+        self.db.add_cards(self.selected_card, deck_id, qty, self.notes.get())
+        self.notes.set("")
+        self.qty.set("1")
+        self.on_add()
 class DeckViewrFrame:
     pass
 
