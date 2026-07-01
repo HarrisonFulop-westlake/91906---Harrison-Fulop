@@ -38,25 +38,28 @@ class DatabaseManager:
                     deck_id      INTEGER REFERENCES decks(id) ON DELETE SET NULL
                 )
             """)
+            conn.commit()
     #Decks
 
-    def add_decks(self, name):
+    def add_decks(self, name: str) -> int:
         with self.connect() as conn:
             cur = conn.cursor()
-            cur.execute("INSERT INTO DECKS (name) VALUES (?)", (name,))
+            cur.execute("INSERT OR IGNORE INTO decks (name) VALUES (?)", (name,))
+            conn.commit()
             cur.execute("SELECT id FROM decks WHERE name = ?", (name,))
-            return cur.fetchone()
+            return cur.fetchone()[0]
         
-    def get_all_decks(self):
+    def get_all_decks(self) -> list[tuple]:
         with self.connect() as conn:
             cur = conn.cursor()
             cur.execute("SELECT id, name FROM decks ORDER BY name")
             return cur.fetchall()
 
-    def delete_decks(self, deck_id: int):
+    def delete_deck(self, deck_id: int):
         with self.connect() as conn:
             cur = conn.cursor()
             cur.execute("DELETE FROM decks WHERE id = ?", (deck_id,))
+            conn.commit()
 
     #Cards
     
@@ -80,8 +83,9 @@ class DatabaseManager:
                 deck_id,
 
         ))
+        conn.commit()
 
-    def get_cards(self, deck_id: int |None = None):
+    def get_cards(self, deck_id: int |None = None, search_term:str="") ->list[tuple]:
         with self.connect() as conn:
             cur = conn.cursor()
             base = """
@@ -97,6 +101,11 @@ class DatabaseManager:
                 conditions.append("c.deck_id = ?")
                 params.append(deck_id)
             #Seaching capabilities will go here when I figure it out
+            if search_term:
+                conditions.append("(c.name LIKE ? OR c.set_name LIKE ?)")
+                params.extend([f"%{search_term}%", f"%{search_term}%"])
+            if conditions:
+                base += "WHERE" + "AND".join(conditions)
             base += "ORDER BY c.name"
             cur.execute(base, params)
             return cur.fetchall()
@@ -155,12 +164,14 @@ class ScryfallAPI:
                 
         threading.Thread(target=fetch, daemon=True).start()
 
-class SearchFrame:
+class SearchFrame(ttk.LabelFrame):
     def __init__(self, parent, on_card_selected, **kwargs):
+        super().__init__(parent, text="Search Scryfall", **kwargs)
         self.on_card_selected = on_card_selected
         self.api = ScryfallAPI()
         self.results: list[dict] = []
         self.search_job = None
+        self.build_ui()
     
     def build_ui(self):
         search_row = ttk.Frame(self)
@@ -168,28 +179,33 @@ class SearchFrame:
 
         self.search = tk.StringVar()
         self.search_entry = ttk.Entry(search_row, textvariable=self.search)
+        self.search_entry.pack(side="left", fill="x", expand=True)
         self.search_entry.bind("<KeyRelease>", self.on_keyrelease)
         self.search_entry.bind("<Return>", lambda _: self.do_search())
 
-        ttk.Button(search_row, text="Search", command=self.do_search)
+        ttk.Button(search_row, text="Search", command=self.do_search).pack(side="left", padx=(4, 0))
 
         self.status = tk.StringVar(value="Type a card name...")
-        ttk.Label(self, textvariable=self.status, foreground="grey").pack()
+        ttk.Label(self, textvariable=self.status, foreground="grey").pack(anchor="w", padx=6)
 
         list_frame = ttk.Frame(self)
-        list_frame.pack
+        list_frame.pack()
 
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
         self.listbox = tk.Listbox(
             list_frame, yscrollcommand=scrollbar.set, 
             selectmode="browse",
+            activestyle="dotbox",
             height=12,
         )
         scrollbar.config(command=self.listbox.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.listbox.pack(side="left", fill="both", expand=True)
+        self.listbox.bind("<<ListboxSelect>>", self.on_select)
         
     def on_keyrelease(self):
         if self.search_job:
-            self.after_cancel(self.search_job) #dont forget to add this
+            self.after_cancel(self.search_job) 
         self.search_job = self.after(600, self.do_search)
 
     def do_search(self):
@@ -199,6 +215,7 @@ class SearchFrame:
         self.status.set("Searching")
         self.listbox.delete(0, tk.END)
         self.results = []
+        self.api.search(query, self.on_results, self.on_error)
         
     def on_results(self, cards: list[dict]):
         self.results = cards
@@ -222,7 +239,7 @@ class SearchFrame:
         self.on_card_selected(card)
 
     
-class PreviewFrame:
+class PreviewFrame(ttk.LabelFrame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, text="Card Preview", **kwargs)
         self.build_ui()
@@ -339,8 +356,192 @@ class AddToDeckFrame(ttk.LabelFrame):
         self.notes.set("")
         self.qty.set("1")
         self.on_add()
-class DeckViewrFrame:
-    pass
+
+class DeckViewerFrame(ttk.LabelFrame):
+    COLUMNS = ("ID", "Name", "Set", "Rarity", "Mana", "Type", "Qty", "Notes", "Deck")
+
+    def __init__(self, parent, db: DatabaseManager, **kwargs):
+        super().__init__(parent, text="Collection / Deck View", **kwargs)
+        self.db = db
+        self.build_ui()
+
+    def build_ui(self):
+        # Filter row
+        filter_row = ttk.Frame(self)
+        filter_row.pack(fill="x", padx=6, pady=(6, 2))
+
+        ttk.Label(filter_row, text="Filter deck:").pack(side="left")
+        self.filter_deck = tk.StringVar()
+        self.filter_deck_combo = ttk.Combobox(
+            filter_row, textvariable=self.filter_deck, state="readonly", width=22
+        )
+        self.filter_deck_combo.pack(side="left", padx=(4, 12))
+        self.filter_deck_combo.bind("<<ComboboxSelected>>", lambda _: self.refresh())
+
+        ttk.Label(filter_row, text="Name search:").pack(side="left")
+        self.search = tk.StringVar()
+        ttk.Entry(filter_row, textvariable=self.search, width=18).pack(side="left", padx=(4, 8))
+        ttk.Button(filter_row, text="Apply", command=self.refresh).pack(side="left")
+        ttk.Button(filter_row, text="Clear", command=self.clear_filters).pack(side="left", padx=(4, 0))
+
+        # Treeview
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True, padx=6, pady=(2, 2))
+
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical")
+        hsb = ttk.Scrollbar(tree_frame, orient="horizontal")
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=self.COLUMNS,
+            show="headings",
+            yscrollcommand=vsb.set,
+            xscrollcommand=hsb.set,
+        )
+        vsb.config(command=self.tree.yview)
+        hsb.config(command=self.tree.xview)
+
+        col_widths = {"ID": 40, "Name": 160, "Set": 110, "Rarity": 75,
+                      "Mana": 70, "Type": 140, "Qty": 40, "Notes": 120, "Deck": 100}
+        for col in self.COLUMNS:
+            self.tree.heading(col, text=col, command=lambda c=col: self.sort_by(c))
+            self.tree.column(col, width=col_widths.get(col, 90), anchor="w")
+
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        self.tree.pack(side="left", fill="both", expand=True)
+
+        # Action buttons
+        btn_row = ttk.Frame(self)
+        btn_row.pack(fill="x", padx=6, pady=(2, 6))
+        ttk.Button(btn_row, text="Delete Selected", command=self.delete_selected).pack(side="left")
+        ttk.Button(btn_row, text="Refresh", command=self.refresh).pack(side="left", padx=(4, 0))
+
+        self.sort_col = "Name"
+        self.sort_asc = True
+
+    def refresh_deck_filter(self, decks: list[tuple]):
+        names = ["(All Decks)"] + [name for _, name in decks]
+        self.deck_filter_map = {"(All Decks)": None}
+        self.deck_filter_map.update({name: did for did, name in decks})
+        self.filter_deck_combo["values"] = names
+        if not self.filter_deck.get():
+            self.filter_deck.set("(All Decks)")
+
+    def refresh(self):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        deck_name = self.filter_deck.get()
+        deck_id = self.deck_filter_map.get(deck_name) if hasattr(self, "deck_filter_map") else None
+        cards = self.db.get_cards(deck_id=deck_id, search_term=self.search.get())
+        for card in cards:
+            self.tree.insert("", tk.END, values=card)
+
+    def clear_filters(self):
+        self.filter_deck.set("(All Decks)")
+        self.search.set("")
+        self.refresh()
+
+    def delete_selected(self):
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("No Selection", "Select a card to delete.")
+            return
+        if not messagebox.askyesno("Delete", f"Delete {len(selected)} card(s)?"):
+            return
+        for sel in selected:
+            card_id = self.tree.item(sel)["values"][0]
+            self.db.delete_card(card_id)
+        self.refresh()
+
+    def sort_by(self, col: str):
+        self._sort_asc = not self._sort_asc if self._sort_col == col else True
+        self._sort_col = col
+        items = [(self.tree.set(k, col), k) for k in self.tree.get_children("")]
+        items.sort(reverse=not self._sort_asc)
+        for idx, (_, k) in enumerate(items):
+            self.tree.move(k, "", idx)
+    
+class InputDialog(tk.Toplevel):
+    def __init__(self, parent, title: str, prompt: str):
+        super().__init__(parent)
+        self.title(title)
+        self.resizable(False, False)
+        self.grab_set()
+        self.result: str | None = None
+
+        ttk.Label(self, text=prompt).pack(padx=20, pady=(16, 4))
+        self.var = tk.StringVar()
+        entry = ttk.Entry(self, textvariable=self.var, width=28)
+        entry.pack(padx=20)
+        entry.focus()
+        entry.bind("<Return>", lambda _: self.ok())
+
+        btn_row = ttk.Frame(self)
+        btn_row.pack(pady=12)
+        ttk.Button(btn_row, text="OK", command=self.ok).pack(side="left", padx=6)
+        ttk.Button(btn_row, text="Cancel", command=self.destroy).pack(side="left")
+
+        self.wait_window()
+
+    def ok(self):
+        self.result = self.var.get()
+        self.destroy()
+
+class CardManagerApp:
+    def __init__(self):
+        self.db = DatabaseManager(DB_FILE)
+        self.root = tk.Tk()
+        self.root.title("MTG Card Manager")
+        self.root.geometry("1100x700")
+        self.root.minsize(900, 600)
+        self._selected_card: dict | None = None
+        self.build_ui()
+        self.full_refresh()
+
+    def build_ui(self):
+        # Top pane: search (left) | preview + add-form (right)
+        top = ttk.PanedWindow(self.root, orient="horizontal")
+        top.pack(fill="both", expand=False, padx=8, pady=8)
+
+        self.search_frame = SearchFrame(
+            top,
+            on_card_selected=self.on_card_selected,
+            width=420,
+        )
+        top.add(self.search_frame, weight=2)
+
+        right_top = ttk.Frame(top)
+        top.add(right_top, weight=3)
+
+        self.preview_frame = PreviewFrame(right_top)
+        self.preview_frame.pack(fill="x", padx=4, pady=(0, 4))
+
+        self.add_frame = AddToDeckFrame(right_top, db=self.db, on_add=self.on_card_added)
+        self.add_frame.pack(fill="x", padx=4)
+
+        # Bottom pane: deck viewer
+        self.deck_viewer = DeckViewerFrame(self.root, db=self.db)
+        self.deck_viewer.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+
+    
+    def on_card_selected(self, card: dict):
+        self.selected_card = card
+        self.preview_frame.load(card)
+        self.add_frame.load_card(card)
+
+    def on_card_added(self):
+        self.full_refresh()
+
+    def full_refresh(self):
+        decks = self.db.get_all_decks()
+        self.add_frame.refresh_decks()
+        self.deck_viewer.refresh_deck_filter(decks)
+        self.deck_viewer.refresh()
+
+    
+    def run(self):
+        self.root.mainloop()
 
 if __name__ == "__main__":
-    db = DatabaseManager("cards.db")
+    app = CardManagerApp()
+    app.run()
