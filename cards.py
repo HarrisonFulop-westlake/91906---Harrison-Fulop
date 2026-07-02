@@ -68,7 +68,7 @@ class DatabaseManager:
             cur = conn.cursor()
             cur.execute("""
                 INSERT INTO cards 
-                    (scryfall_id, name, set_name, rarity, mana_cost, type_line image_uri, quantity, notes, deck_id)
+                    (scryfall_id, name, set_name, rarity, mana_cost, type_line, image_uri, quantity, notes, deck_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,(
                 card.get("id"),
@@ -85,14 +85,13 @@ class DatabaseManager:
         ))
         conn.commit()
 
-    def get_cards(self, deck_id: int |None = None, search_term:str="") ->list[tuple]:
+    def get_cards(self, deck_id: int | None = None, search_term: str= "") -> list[tuple]:
         with self.connect() as conn:
             cur = conn.cursor()
             base = """
-                SELECT c.id, c.name, c.set_name, c.rarity, c.mana_cost, c.type_line, c.quantity, c.notes,
-
-                COALESCE(d.name, 'No Deck') 
-                
+                SELECT c.id, c.name, c.set_name, c.rarity, c.mana_cost, 
+                    c.type_line, c.quantity, c.notes,
+                    COALESCE(d.name, 'No Deck')         
                 FROM cards c
                 LEFT JOIN decks d ON c.deck_id = d.id
             """
@@ -105,21 +104,22 @@ class DatabaseManager:
                 conditions.append("(c.name LIKE ? OR c.set_name LIKE ?)")
                 params.extend([f"%{search_term}%", f"%{search_term}%"])
             if conditions:
-                base += "WHERE" + "AND".join(conditions)
-            base += "ORDER BY c.name"
+                base += " WHERE " + " AND ".join(conditions)
+            base += " ORDER BY c.name"
             cur.execute(base, params)
             return cur.fetchall()
         
-    def delete_cards(self, card_id: int):
+    def delete_card(self, card_id: int):
         with self.connect() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM cards WHERE id = ?", (card_id))
+            cur.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+            conn.commit()
 
     def update_cards(self, card_id: int, quantity: int):
         with self.connect() as conn:
             cur = conn.cursor()
             cur.execute("UPDATE cards SET quantity = ? WHERE id = ?", (quantity, card_id))
-        
+            conn.commit()
 
 
 class ScryfallAPI:
@@ -127,10 +127,18 @@ class ScryfallAPI:
     def search(query: str, callback, error_callback):
         def fetch():
             try:
+                headers = {"User-Agent": "MTGCardManager/1.0 (hf22417@my.westlake.school.nz)"}
                 response = requests.get(
                     "https://api.scryfall.com/cards/search",
-                    params={"q": query, "unique" : "cards", "order" : "name"},
+                    params={"q": query, "unique": "cards", "order": "name"},
+                    timeout=8,
+                    headers=headers
                 )
+                
+                print("URL:", response.url)
+                print("Status:", response.status_code)
+                print("Body:", response.text)
+
 
                 if response.status_code == 200:
                     data = response.json()
@@ -150,9 +158,11 @@ class ScryfallAPI:
     def exact_search(name: str, callback, error_callback):
         def fetch():
             try:
+                headers = {"User-Agent": "MTGCardManager/1.0 (your_email@example.com)"}
                 response = requests.get(
                     "https://api.scryfall.com/cards/named",
-                    params={"exact": name}
+                    params={"exact": name},
+                    headers=headers
                 )
                 if response.status_code == 200:
                     callback(response.json())
@@ -189,11 +199,12 @@ class SearchFrame(ttk.LabelFrame):
         ttk.Label(self, textvariable=self.status, foreground="grey").pack(anchor="w", padx=6)
 
         list_frame = ttk.Frame(self)
-        list_frame.pack()
+        list_frame.pack(fill="both", expand=True, padx=6, pady=(2,6))
 
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
         self.listbox = tk.Listbox(
-            list_frame, yscrollcommand=scrollbar.set, 
+            list_frame, 
+            yscrollcommand=scrollbar.set, 
             selectmode="browse",
             activestyle="dotbox",
             height=12,
@@ -203,7 +214,7 @@ class SearchFrame(ttk.LabelFrame):
         self.listbox.pack(side="left", fill="both", expand=True)
         self.listbox.bind("<<ListboxSelect>>", self.on_select)
         
-    def on_keyrelease(self):
+    def on_keyrelease(self, event):
         if self.search_job:
             self.after_cancel(self.search_job) 
         self.search_job = self.after(600, self.do_search)
@@ -221,17 +232,17 @@ class SearchFrame(ttk.LabelFrame):
         self.results = cards
         self.listbox.delete(0, tk.END)
         if not cards:
-            self.status.set("No results found.)")
+            self.status.set("No results found.")
             return
         self.status.set(f"{len(cards)} result(s) select one to preview.")
         for c in cards:
-            label = f"{c['name']} [{c.get('set_name','?')}] {c.get('rarity', '')}"
+            label = f"{c['name']} [{c.get('set_name', '?')}] {c.get('rarity', '')}"
             self.listbox.insert(tk.END, label)
     
     def on_error(self, msg: str):
         self.status.set(f"Error: {msg}")
 
-    def on_select(self):
+    def on_select(self, event):
         select = self.listbox.curselection()
         if not select:
             return
@@ -416,8 +427,8 @@ class DeckViewerFrame(ttk.LabelFrame):
         ttk.Button(btn_row, text="Delete Selected", command=self.delete_selected).pack(side="left")
         ttk.Button(btn_row, text="Refresh", command=self.refresh).pack(side="left", padx=(4, 0))
 
-        self.sort_col = "Name"
-        self.sort_asc = True
+        self._sort_col = "Name"
+        self._sort_asc = True
 
     def refresh_deck_filter(self, decks: list[tuple]):
         names = ["(All Decks)"] + [name for _, name in decks]
